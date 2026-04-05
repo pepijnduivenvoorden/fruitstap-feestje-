@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (optional)
+    //   - email: string (optional)
+    //   - steps: number (required)
+    //   - goal: number (required)
+    //   - credits: number (required)
+    //   - shoeScanned: boolean (optional)
+    //   - lastStepUpdate: string (optional)
+    //
+    // Collection: supermarkets
+    // Document ID: {supermarketId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - address: string (required)
+    //   - lat: number (required)
+    //   - lng: number (required)
+    //
+    // Collection: coupons
+    // Document ID: {couponId}
+    // Fields:
+    //   - id: string (required)
+    //   - userId: string (required)
+    //   - supermarketId: string (optional)
+    //   - supermarketName: string (optional)
+    //   - fruitType: string (required)
+    //   - expiryDate: string (required)
+    //   - redeemed: boolean (required)
+    //   - createdAt: string (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "pepijnduivenvoorden@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'steps', 'goal', 'credits']) &&
+             data.uid is string &&
+             data.steps is number &&
+             data.goal is number &&
+             data.credits is number;
+    }
+
+    function isValidConfig(data) {
+      return data.winChance is number &&
+             data.fruitWeights is map &&
+             data.ads is list;
+    }
+
+    function isValidSupermarket(data) {
+      return data.keys().hasAll(['id', 'name', 'address', 'lat', 'lng']) &&
+             data.id is string &&
+             data.name is string &&
+             data.address is string &&
+             data.lat is number &&
+             data.lng is number;
+    }
+
+    function isValidCoupon(data) {
+      return data.keys().hasAll(['id', 'userId', 'fruitType', 'redeemed']) &&
+             data.id is string &&
+             data.userId is string &&
+             data.fruitType is string &&
+             data.redeemed is bool;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin()) && (isAdmin() || isValidUser(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /supermarkets/{supermarketId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidSupermarket(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId) && 
+                      request.resource.data.keys().hasAll(['userId', 'fruitType', 'redeemed']) &&
+                      request.resource.data.userId is string &&
+                      request.resource.data.fruitType is string &&
+                      request.resource.data.redeemed is bool;
+      allow update: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin()) && 
+                      request.resource.data.userId is string &&
+                      request.resource.data.fruitType is string &&
+                      request.resource.data.redeemed is bool;
+      allow delete: if isAdmin();
+    }
+  }
+}

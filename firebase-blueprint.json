@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User's progress and stats",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "steps": { "type": "number" },
+        "goal": { "type": "number" },
+        "credits": { "type": "number" },
+        "shoeScanned": { "type": "boolean" },
+        "lastStepUpdate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "steps", "goal", "credits"]
+    },
+    "Supermarket": {
+      "title": "Supermarket",
+      "description": "Participating supermarket location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
+      },
+      "required": ["id", "name", "address", "lat", "lng"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Earned fruit coupon",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "supermarketId": { "type": "string" },
+        "supermarketName": { "type": "string" },
+        "fruitType": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "redeemed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "fruitType", "redeemed"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/supermarkets/{supermarketId}": {
+      "schema": "Supermarket",
+      "description": "List of participating supermarkets"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "User earned coupons"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "FruitStap - Gezonde Beloningen",
+  "description": "Een uniek hardloop-incentiveprogramma waarbij je fruitcoupons verdient door te wandelen en doelen te bereiken.",
+  "requestFramePermissions": ["camera", "geolocation"]
+}
