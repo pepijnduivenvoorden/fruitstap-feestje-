@@ -33,8 +33,7 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
       { key: 'pear', emoji: '🍐', name: 'Peer', weight: 20 },
       { key: 'grapes', emoji: '🍇', name: 'Druiven', weight: 7 },
       { key: 'kiwi', emoji: '🥝', name: 'Kiwi', weight: 3 }
-    ],
-    partyMode: false
+    ]
   });
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'pepijnduivenvoorden@gmail.com';
@@ -626,38 +625,18 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
                 </div>
               </div>
               
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-4 bg-yellow-50 border border-yellow-100 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-yellow-400 p-2 rounded-xl text-blue-900">
-                      <RefreshCcw size={20} className={appConfig.partyMode ? 'animate-spin' : ''} />
-                    </div>
-                    <div>
-                      <p className="font-black text-blue-900 uppercase italic">Feest Modus</p>
-                      <p className="text-[10px] text-yellow-600 font-bold uppercase tracking-widest">Happy Livegang Thema</p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setAppConfig({ ...appConfig, partyMode: !appConfig.partyMode })}
-                    className={`w-14 h-8 rounded-full p-1 transition-all duration-300 ${appConfig.partyMode ? 'bg-green-500' : 'bg-gray-200'}`}
-                  >
-                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all duration-300 ${appConfig.partyMode ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.winChance} (0.0 - 1.0)</label>
-                  <input 
-                    type="range" min="0" max="1" step="0.05"
-                    value={appConfig.winChance}
-                    onChange={(e) => setAppConfig({...appConfig, winChance: parseFloat(e.target.value)})}
-                    className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <div className="flex justify-between text-sm font-bold text-blue-600">
-                    <span>0%</span>
-                    <span>{Math.round(appConfig.winChance * 100)}%</span>
-                    <span>100%</span>
-                  </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.winChance} (0.0 - 1.0)</label>
+                <input 
+                  type="range" min="0" max="1" step="0.05"
+                  value={appConfig.winChance}
+                  onChange={(e) => setAppConfig({...appConfig, winChance: parseFloat(e.target.value)})}
+                  className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <div className="flex justify-between text-sm font-bold text-blue-600">
+                  <span>0%</span>
+                  <span>{Math.round(appConfig.winChance * 100)}%</span>
+                  <span>100%</span>
                 </div>
               </div>
 

@@ -83,7 +83,6 @@ export interface AppConfig {
   winChance: number;
   ads: { text: string, url: string }[];
   prizes: { key: string, emoji: string, name: string, weight: number }[];
-  partyMode?: boolean;
 }
 
 type Tab = 'steps' | 'scan' | 'coupons' | 'map' | 'admin';
@@ -98,7 +97,6 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [trollEffect, setTrollEffect] = useState<{ type: string, timestamp: number } | null>(null);
-  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
 
   const t = translations.nl;
 
@@ -170,16 +168,6 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Global Config Listener
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'config', 'app'), (snap) => {
-      if (snap.exists()) {
-        setAppConfig(snap.data() as AppConfig);
-      }
-    });
-    return () => unsub();
-  }, []);
-
   // Clear troll effect after some time
   useEffect(() => {
     if (trollEffect) {
@@ -211,16 +199,6 @@ export default function App() {
     } catch (error) {
       console.error('Anonymous login failed', error);
       setAuthError('Inloggen als gast mislukt. Probeer het later opnieuw.');
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    try {
-      setAuthError(null);
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error('Google login failed', error);
-      setAuthError('Google login mislukt. Probeer het later opnieuw.');
     }
   };
 
@@ -281,13 +259,6 @@ export default function App() {
               <LogIn size={24} />
               Start Nu
             </button>
-            <button 
-              onClick={handleGoogleLogin}
-              className="w-full bg-white text-blue-900 py-4 rounded-2xl font-bold shadow-lg hover:bg-gray-50 transition-all flex items-center justify-center gap-3"
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-              Google Login
-            </button>
             <p className="text-blue-100 text-[10px] font-bold uppercase tracking-widest opacity-60">
               Geen account nodig • Geen gegevens delen
             </p>
@@ -341,7 +312,7 @@ export default function App() {
 
   return (
     <div 
-      className="min-h-screen bg-gray-50 flex flex-col pb-20 transition-all duration-500 relative overflow-hidden"
+      className="min-h-screen bg-gray-50 flex flex-col pb-20 transition-all duration-500"
       style={getTrollStyles()}
     >
       <style>{`
@@ -358,48 +329,7 @@ export default function App() {
           90% { transform: translate(1px, 2px) rotate(0deg); }
           100% { transform: translate(1px, -2px) rotate(-1deg); }
         }
-        @keyframes float {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(5deg); }
-        }
       `}</style>
-
-      {/* Party Mode Overlay */}
-      <AnimatePresence>
-        {appConfig?.partyMode && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 pointer-events-none z-[100]"
-          >
-            <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-yellow-400 text-blue-900 px-8 py-4 rounded-full font-black text-2xl uppercase italic shadow-2xl border-4 border-white rotate-2 animate-bounce">
-              Happy Livegang! 🎈
-            </div>
-            {[...Array(12)].map((_, i) => (
-              <motion.div
-                key={i}
-                initial={{ y: '110vh', x: `${Math.random() * 100}vw` }}
-                animate={{ 
-                  y: '-20vh',
-                  x: `${(Math.random() * 100)}vw`,
-                }}
-                transition={{ 
-                  duration: 10 + Math.random() * 10, 
-                  repeat: Infinity, 
-                  delay: Math.random() * 10,
-                  ease: "linear"
-                }}
-                className="absolute text-4xl"
-                style={{ filter: `hue-rotate(${Math.random() * 360}deg)` }}
-              >
-                🎈
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Header */}
       <header className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50">
         <div className="max-w-md mx-auto flex justify-between items-center">
