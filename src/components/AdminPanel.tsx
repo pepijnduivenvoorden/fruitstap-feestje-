@@ -341,8 +341,8 @@ export default function AdminPanel({ userData: currentUser, t, onAdminLogin }: {
     return (
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 space-y-8">
         <div className="text-center space-y-2">
-          <div className="bg-blue-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto text-blue-600">
-            <Lock size={40} />
+          <div className="bg-blue-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto overflow-hidden border-2 border-blue-100 p-2">
+            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
           </div>
           <h2 className="text-2xl font-black text-blue-600 uppercase italic">{t.admin}</h2>
           <p className="text-gray-500 text-sm">Voer het beheerderswachtwoord in om door te gaan.</p>
@@ -416,9 +416,9 @@ export default function AdminPanel({ userData: currentUser, t, onAdminLogin }: {
         <h2 className="text-2xl font-black text-blue-600 uppercase italic">Admin Dashboard</h2>
         <button 
           onClick={() => setIsAuthorized(false)}
-          className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+          className="w-10 h-10 p-1 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition-all overflow-hidden flex items-center justify-center"
         >
-          <Lock size={20} />
+          <img src="/logo.png" alt="Lock" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
         </button>
       </div>
 

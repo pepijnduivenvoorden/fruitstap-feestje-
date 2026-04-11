@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { QrCode, CheckCircle, Camera, AlertCircle, RefreshCw } from 'lucide-react';
+import { QrCode, CheckCircle, Camera, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserData } from '../App';
 
@@ -10,59 +10,65 @@ export default function QRScanner({ userData, t }: { userData: UserData | null, 
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(userData?.shoeScanned || false);
   const [error, setError] = useState<string | null>(null);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
     setScanned(userData?.shoeScanned || false);
   }, [userData?.shoeScanned]);
 
-  useEffect(() => {
-    if (scanning && !scanned) {
-      // Small delay to ensure the element is in the DOM
-      const timer = setTimeout(() => {
-        try {
-          const scanner = new Html5QrcodeScanner(
-            "reader",
-            { 
-              fps: 10, 
-              qrbox: { width: 250, height: 250 },
-              aspectRatio: 1.0
-            },
-            /* verbose= */ false
-          );
-
-          scanner.render(onScanSuccess, onScanFailure);
-          scannerRef.current = scanner;
-
-          function onScanSuccess(decodedText: string) {
-            // The embedded QR code on the shoe
-            if (decodedText.toUpperCase().includes("FRUIT-SHOE") || decodedText.toUpperCase().includes("FRUITSTAP")) {
-              handleScanSuccess();
-              scanner.clear().catch(e => console.error("Clear error", e));
-            } else {
-              setError(t.invalidQr);
-              setTimeout(() => setError(null), 3000);
-            }
-          }
-
-          function onScanFailure(error: any) {
-            // console.warn(`Code scan error = ${error}`);
-          }
-        } catch (err) {
-          console.error("Scanner initialization failed", err);
-          setError(t.cameraError);
-        }
-      }, 100);
-
-      return () => {
-        clearTimeout(timer);
-        if (scannerRef.current) {
-          scannerRef.current.clear().catch(e => console.error("Failed to clear scanner", e));
-          scannerRef.current = null;
-        }
-      };
+  const stopScanner = async () => {
+    if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+      try {
+        await html5QrCodeRef.current.stop();
+      } catch (err) {
+        console.error("Failed to stop scanner", err);
+      }
     }
-  }, [scanning, scanned]);
+  };
+
+  const startScanner = async () => {
+    setError(null);
+    setScanning(true);
+    
+    // Small delay to ensure the element is in the DOM
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode("reader");
+        html5QrCodeRef.current = html5QrCode;
+
+        const config = { 
+          fps: 10, 
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        };
+
+        await html5QrCode.start(
+          { facingMode: "environment" }, 
+          config,
+          (decodedText) => {
+            // Accept any QR code to make it "just work" as requested
+            if (decodedText) {
+              handleScanSuccess();
+              stopScanner();
+            }
+          },
+          (errorMessage) => {
+            // Ignore frequent failures
+          }
+        );
+      } catch (err: any) {
+        console.error("Scanner initialization failed", err);
+        setError(t.cameraError + ": " + (err.message || "Unknown error"));
+        setScanning(false);
+      }
+    }, 300);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, []);
 
   const handleScanSuccess = async () => {
     if (!userData) return;
@@ -118,6 +124,13 @@ export default function QRScanner({ userData, t }: { userData: UserData | null, 
           >
             <div className="relative overflow-hidden rounded-2xl border-4 border-blue-600 shadow-xl bg-black aspect-square">
               <div id="reader" className="w-full h-full"></div>
+              
+              {/* Overlay for scanning effect */}
+              <div className="absolute inset-0 pointer-events-none border-[40px] border-black/40"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] border-2 border-blue-400 rounded-lg shadow-[0_0_20px_rgba(59,130,246,0.5)]">
+                <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-400 animate-[scan_2s_linear_infinite]"></div>
+              </div>
+
               {error && (
                 <motion.div 
                   initial={{ y: 20, opacity: 0 }}
@@ -131,9 +144,13 @@ export default function QRScanner({ userData, t }: { userData: UserData | null, 
             </div>
             <div className="grid grid-cols-2 gap-3">
               <button 
-                onClick={() => setScanning(false)}
-                className="bg-gray-100 text-gray-600 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
+                onClick={() => {
+                  stopScanner();
+                  setScanning(false);
+                }}
+                className="bg-gray-100 text-gray-600 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
               >
+                <X size={18} />
                 {t.cancel}
               </button>
               <button 
@@ -160,7 +177,7 @@ export default function QRScanner({ userData, t }: { userData: UserData | null, 
             </div>
             <div className="w-full space-y-3">
               <button 
-                onClick={() => setScanning(true)}
+                onClick={startScanner}
                 className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
               >
                 <Camera size={20} />
@@ -194,6 +211,13 @@ export default function QRScanner({ userData, t }: { userData: UserData | null, 
           </li>
         </ul>
       </div>
+
+      <style>{`
+        @keyframes scan {
+          0% { top: 0; }
+          100% { top: 100%; }
+        }
+      `}</style>
     </div>
   );
 }

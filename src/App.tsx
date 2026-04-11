@@ -377,14 +377,15 @@ export default function App() {
   // Login Screen if not authenticated
   if (!user) {
     return (
-      <div className="min-h-screen bg-blue-600 flex flex-col items-center justify-center p-6 text-white">
+      <div className="min-h-screen bg-blue-600 flex flex-col items-center justify-center p-6 text-white overflow-hidden">
+        <div className="watermark-bg opacity-10" style={{ backgroundImage: "url('/logo.png')" }}></div>
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl text-center space-y-8"
+          className="w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl text-center space-y-8 relative z-10"
         >
-          <div className="bg-blue-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto">
-            <Footprints size={48} className="text-blue-600" />
+          <div className="bg-blue-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto overflow-hidden border-4 border-blue-100">
+            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
           </div>
           
           <div className="space-y-2">
@@ -426,9 +427,10 @@ export default function App() {
 
   return (
     <div 
-      className="min-h-screen bg-gray-50 flex flex-col pb-20 transition-all duration-500"
+      className="min-h-screen bg-gray-50 flex flex-col pb-20 transition-all duration-500 relative"
       style={getTrollStyles()}
     >
+      <div className="watermark-bg" style={{ backgroundImage: "url('/logo.png')" }}></div>
       <style>{`
         @keyframes shake {
           0% { transform: translate(1px, 1px) rotate(0deg); }
@@ -455,8 +457,8 @@ export default function App() {
       <header className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="bg-yellow-400 p-2 rounded-lg">
-              <Footprints size={24} className="text-blue-600" />
+            <div className="bg-white p-1 rounded-lg w-10 h-10 overflow-hidden flex items-center justify-center">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <span className="font-bold text-xl">{t.appName}</span>
           </div>
@@ -587,7 +589,14 @@ export default function App() {
           <NavButton 
             active={activeTab === 'admin'} 
             onClick={() => setActiveTab('admin')}
-            icon={<Settings size={24} />}
+            icon={
+              <div className={cn(
+                "w-6 h-6 overflow-hidden flex items-center justify-center rounded-md",
+                activeTab === 'admin' ? "bg-white" : "bg-gray-100"
+              )}>
+                <img src="/logo.png" alt="Admin" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+              </div>
+            }
             label={t.admin}
           />
         </div>
