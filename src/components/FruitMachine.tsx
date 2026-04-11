@@ -221,7 +221,7 @@ export default function FruitMachine({ userData, supermarkets, t }: { userData: 
       );
     }
 
-    if (isVideo) {
+    if (isVideo && currentAd.url) {
       return (
         <video 
           src={currentAd.url} 
@@ -230,6 +230,12 @@ export default function FruitMachine({ userData, supermarkets, t }: { userData: 
           loop 
           playsInline
           className="w-full h-full object-cover" 
+          onError={(e) => {
+            console.error('Video load error:', e);
+            // Fallback to image if video fails
+            const target = e.target as HTMLVideoElement;
+            target.style.display = 'none';
+          }}
         />
       );
     }

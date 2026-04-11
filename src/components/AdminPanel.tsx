@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc, addDoc, getDocs, getDoc, writeBatch } from 'firebase/firestore';
-import { Settings, Users, Store, Plus, Trash2, Lock, Unlock, Eye, EyeOff, Database, CheckCircle, X, AlertTriangle, RefreshCcw, Sliders, Ticket } from 'lucide-react';
+import { Settings, Users, Store, Plus, Trash2, Lock, Unlock, Eye, EyeOff, Database, CheckCircle, X, AlertTriangle, RefreshCcw, Sliders, Ticket, LogIn } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserData, Supermarket, AppConfig } from '../App';
 import { playSound, SOUNDS } from '../utils/sound';
+import { auth } from '../firebase';
 
-export default function AdminPanel({ userData: currentUser, t }: { userData: UserData | null, t: any }) {
+export default function AdminPanel({ userData: currentUser, t, onAdminLogin }: { userData: UserData | null, t: any, onAdminLogin: () => void }) {
   const [password, setPassword] = useState('');
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [users, setUsers] = useState<UserData[]>([]);
   const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
+  const [activeTroll, setActiveTroll] = useState<{ type: string, active: boolean } | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'stores' | 'config' | 'coupons'>('users');
   const [newStore, setNewStore] = useState({ name: '', address: '', lat: 0, lng: 0 });
   const [loading, setLoading] = useState(false);
@@ -69,11 +71,19 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
         setCoupons(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, (e) => handleFirestoreError(e, OperationType.LIST, 'coupons'));
 
+      const unsubTrolls = onSnapshot(doc(db, 'config', 'trolls'), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setActiveTroll({ type: data.type, active: data.active });
+        }
+      });
+
       return () => {
         unsubUsers();
         unsubStores();
         unsubConfig();
         unsubCoupons();
+        unsubTrolls();
       };
     }
   }, [isAuthorized, isAdmin]);
@@ -87,11 +97,20 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
     }
   }, [statusMessage]);
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password === 'admin123' || currentUser?.role === 'admin') {
       playSound(SOUNDS.click);
       setIsAuthorized(true);
+      
+      // If user entered password but doesn't have admin role in Firestore, update it
+      if (currentUser && currentUser.role !== 'admin') {
+        try {
+          await setDoc(doc(db, 'users', currentUser.uid), { role: 'admin' }, { merge: true });
+        } catch (e) {
+          console.error('Failed to set admin role:', e);
+        }
+      }
     } else {
       setStatusMessage({ text: "Onjuist wachtwoord!", type: 'error' });
     }
@@ -112,7 +131,17 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
 
   const triggerTroll = async (type: string) => {
     playSound(SOUNDS.click);
+    setLoading(true);
+    
+    // Toggle logic for party mode
+    if (type === 'party' && activeTroll?.type === 'party' && activeTroll?.active) {
+      await stopTrolls();
+      setLoading(false);
+      return;
+    }
+
     try {
+      console.log('Setting troll state:', { type, active: true, timestamp: Date.now() });
       await setDoc(doc(db, 'config', 'trolls'), {
         type,
         active: true,
@@ -120,13 +149,18 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
       });
       setStatusMessage({ text: `Troll '${type}' geactiveerd!`, type: 'success' });
       
-      // Reset after a short delay so it can be triggered again
-      setTimeout(async () => {
-        await setDoc(doc(db, 'config', 'trolls'), { active: false }, { merge: true });
-      }, 2000);
+      // Reset non-persistent trolls after a short delay
+      if (type !== 'party') {
+        setTimeout(async () => {
+          await setDoc(doc(db, 'config', 'trolls'), { active: false }, { merge: true });
+        }, 2000);
+      }
     } catch (e) {
+      console.error('Troll activation failed:', e);
       handleFirestoreError(e, OperationType.UPDATE, 'config/trolls');
+      setStatusMessage({ text: "Activatie mislukt! Ben je ingelogd?", type: 'error' });
     }
+    setLoading(false);
   };
 
   const stopTrolls = async () => {
@@ -320,6 +354,23 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
             Toegang Krijgen
           </button>
         </form>
+
+        <div className="relative py-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-100"></div>
+          </div>
+          <div className="relative flex justify-center text-xs font-bold uppercase tracking-widest">
+            <span className="bg-white px-4 text-gray-400">Of / Or</span>
+          </div>
+        </div>
+
+        <button 
+          onClick={onAdminLogin}
+          className="w-full flex items-center justify-center gap-3 bg-white text-blue-900 border border-gray-200 px-8 py-4 rounded-2xl font-bold shadow-sm hover:bg-gray-50 transition-colors"
+        >
+          <LogIn size={20} />
+          Log in als Beheerder
+        </button>
       </div>
     );
   }
@@ -616,6 +667,18 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
                     Kleuren Inverteren
                   </button>
                   <button 
+                    onClick={() => triggerTroll('party')}
+                    className={cn(
+                      "p-4 rounded-2xl font-black text-xs uppercase tracking-tighter shadow-sm transition-all flex flex-col items-center gap-2 border",
+                      activeTroll?.type === 'party' && activeTroll?.active 
+                        ? "bg-yellow-400 text-blue-900 border-yellow-500 scale-105" 
+                        : "bg-white text-yellow-600 border-yellow-100 hover:bg-yellow-100"
+                    )}
+                  >
+                    <span className="text-2xl">🎉</span>
+                    {activeTroll?.type === 'party' && activeTroll?.active ? 'Stop Feest' : 'Feest Modus'}
+                  </button>
+                  <button 
                     onClick={() => triggerTroll('rotate')}
                     className="bg-white text-pink-700 p-4 rounded-2xl font-black text-xs uppercase tracking-tighter shadow-sm hover:bg-pink-100 transition-all flex flex-col items-center gap-2 border border-pink-100"
                   >
@@ -720,9 +783,10 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
                       </div>
                       <button 
                         onClick={() => removePrize(index)}
-                        className="p-1.5 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        title="Verwijder prijs"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   ))}
@@ -781,9 +845,9 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
                     <div key={index} className="p-4 bg-gray-50 rounded-2xl space-y-3 relative group">
                       <button 
                         onClick={() => removeAd(index)}
-                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10"
+                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-2 rounded-full shadow-sm z-10 hover:bg-red-200 transition-all"
                       >
-                        <Trash2 size={12} />
+                        <Trash2 size={14} />
                       </button>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-gray-400 uppercase">{t.adText}</label>
@@ -820,9 +884,10 @@ export default function AdminPanel({ userData: currentUser, t }: { userData: Use
               <button 
                 onClick={saveConfig}
                 disabled={loading}
-                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition-all"
+                className="w-full bg-green-600 text-white py-4 rounded-2xl font-black uppercase italic shadow-xl hover:bg-green-700 transition-all flex items-center justify-center gap-3 mt-8"
               >
-                Instellingen Opslaan
+                {loading ? <RefreshCcw className="animate-spin" /> : <CheckCircle />}
+                Alle Wijzigingen Opslaan
               </button>
             </div>
           </motion.div>

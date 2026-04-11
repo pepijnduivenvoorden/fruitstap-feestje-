@@ -61,7 +61,8 @@ service cloud.firestore {
              data.uid is string &&
              data.steps is number &&
              data.goal is number &&
-             data.credits is number;
+             data.credits is number &&
+             (!('role' in data) || data.role in ['admin', 'user']);
     }
 
     function isValidConfig(data) {

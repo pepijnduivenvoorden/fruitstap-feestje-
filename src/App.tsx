@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { auth, db, googleProvider, OperationType, handleFirestoreError } from './firebase';
 import { 
   signInWithPopup, 
@@ -33,6 +33,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { playSound, SOUNDS } from './utils/sound';
+import confetti from 'canvas-confetti';
 
 // Components
 import QRScanner from './components/QRScanner';
@@ -93,19 +94,25 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('steps');
   const [loading, setLoading] = useState(true);
   const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'email'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [trollEffect, setTrollEffect] = useState<{ type: string, timestamp: number } | null>(null);
+  const [isAtTop, setIsAtTop] = useState(true);
+  
+  const partyAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const t = translations.nl;
 
   // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) {
-        setUserData(null);
+        try {
+          await signInAnonymously(auth);
+        } catch (error) {
+          console.error('Anonymous sign-in failed', error);
+          setLoading(false);
+        }
+      } else {
+        setUser(u);
         setLoading(false);
       }
     });
@@ -124,7 +131,7 @@ export default function App() {
         // Initialize user data
         const newData: UserData = {
           uid: user.uid,
-          displayName: user.isAnonymous ? 'Gast' : (user.displayName || 'Gebruiker'),
+          displayName: user.displayName || 'Gebruiker',
           email: user.email || '',
           steps: 0,
           goal: 1000,
@@ -156,29 +163,104 @@ export default function App() {
     const unsub = onSnapshot(doc(db, 'config', 'trolls'), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.active && data.timestamp > (Date.now() - 5000)) {
-          setTrollEffect({ type: data.type, timestamp: data.timestamp });
-          
-          if (data.type === 'fart') {
-            playSound(SOUNDS.fart);
+        console.log('Troll data received:', data);
+        if (data.active) {
+          // Party mode is persistent, others are time-based
+          if (data.type === 'party' || data.timestamp > (Date.now() - 5000)) {
+            setTrollEffect({ type: data.type, timestamp: data.timestamp });
+            
+            if (data.type === 'fart' && data.timestamp > (Date.now() - 2000)) {
+              playSound(SOUNDS.fart);
+            }
+            
+            if (data.type === 'party' && data.timestamp > (Date.now() - 2000)) {
+              playSound(SOUNDS.win);
+            }
+          } else {
+            setTrollEffect(null);
           }
+        } else {
+          setTrollEffect(null);
         }
       }
-    });
+    }, (err) => console.error('Troll listener error:', err));
     return () => unsub();
   }, []);
 
-  // Clear troll effect after some time
+  // Periodic confetti for party mode
   useEffect(() => {
-    if (trollEffect) {
-      const timer = setTimeout(() => {
-        if (trollEffect.type !== 'invert' && trollEffect.type !== 'rotate') {
-          setTrollEffect(null);
+    if (trollEffect?.type === 'party') {
+      const fire = () => {
+        try {
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff']
+          });
+        } catch (e) {
+          console.error('Confetti failed:', e);
         }
+      };
+      
+      fire(); // Initial fire
+      const interval = setInterval(fire, 3000);
+
+      // Handle Europapa music
+      if (!partyAudioRef.current) {
+        // Using a more reliable URL for Europapa if possible, or at least handling errors
+        partyAudioRef.current = new Audio('https://ia800508.us.archive.org/15/items/joost-klein-europapa/Joost%20Klein%20-%20Europapa.mp3');
+        partyAudioRef.current.loop = true;
+        partyAudioRef.current.volume = 0.5;
+        
+        partyAudioRef.current.onerror = (e) => {
+          console.error('Audio load error:', e);
+          // Try a fallback URL if the first one fails
+          if (partyAudioRef.current) {
+            partyAudioRef.current.src = 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3'; // Fallback to a simple sound if Europapa fails
+            partyAudioRef.current.play().catch(err => console.warn('Fallback audio blocked:', err));
+          }
+        };
+      }
+      
+      const playMusic = async () => {
+        try {
+          await partyAudioRef.current?.play();
+        } catch (e) {
+          console.warn('Party music blocked by browser:', e);
+        }
+      };
+
+      playMusic();
+
+      return () => {
+        clearInterval(interval);
+        if (partyAudioRef.current) {
+          partyAudioRef.current.pause();
+          partyAudioRef.current.currentTime = 0;
+        }
+      };
+    }
+  }, [trollEffect]);
+
+  // Clear troll effect after some time (only for non-persistent ones)
+  useEffect(() => {
+    if (trollEffect && trollEffect.type !== 'party' && trollEffect.type !== 'invert' && trollEffect.type !== 'rotate') {
+      const timer = setTimeout(() => {
+        setTrollEffect(null);
       }, 5000);
       return () => clearTimeout(timer);
     }
   }, [trollEffect]);
+
+  // Scroll listener for banner
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsAtTop(window.scrollY < 50);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const getTrollStyles = () => {
     if (!trollEffect) return {};
@@ -186,29 +268,30 @@ export default function App() {
       case 'invert': return { filter: 'invert(1)' };
       case 'rotate': return { transform: 'rotate(180deg)' };
       case 'shake': return { animation: 'shake 0.5s infinite' };
+      case 'party': return { animation: 'party-flash 0.5s infinite' };
       default: return {};
     }
   };
 
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const handleAnonymousLogin = async () => {
+  const handleGoogleLogin = async () => {
     try {
       setAuthError(null);
-      await signInAnonymously(auth);
+      await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      console.error('Anonymous login failed', error);
-      setAuthError('Inloggen als gast mislukt. Probeer het later opnieuw.');
+      console.error('Login failed', error);
+      setAuthError('Google login failed');
     }
   };
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const toggleLanguage = async () => {
+    if (!user || !userData) return;
+    const newLang = userData.language === 'nl' ? 'en' : 'nl';
     try {
-      setAuthError(null);
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      setAuthError('Admin login mislukt. Controleer je gegevens.');
+      await setDoc(doc(db, 'users', user.uid), { language: newLang }, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
     }
   };
 
@@ -233,82 +316,8 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-blue-600 flex items-center justify-center p-6">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white/10 backdrop-blur-xl rounded-[40px] p-8 w-full max-w-sm border border-white/20 shadow-2xl text-center space-y-8"
-        >
-          <div className="space-y-4">
-            <div className="bg-yellow-400 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto shadow-xl rotate-3">
-              <Footprints size={48} className="text-blue-600" />
-            </div>
-            <div className="space-y-1">
-              <h1 className="text-4xl font-black text-white uppercase italic tracking-tighter">FruitStap</h1>
-              <p className="text-blue-100 font-bold text-sm uppercase tracking-widest opacity-80">Wandel & Win Vers Fruit!</p>
-            </div>
-          </div>
+  // No more login screen - we use anonymous auth by default
 
-          <div className="space-y-4">
-            <button 
-              onClick={handleAnonymousLogin}
-              className="w-full bg-yellow-400 text-blue-900 py-5 rounded-2xl font-black text-lg uppercase italic shadow-xl hover:bg-yellow-300 transition-all active:scale-95 flex items-center justify-center gap-3"
-            >
-              <LogIn size={24} />
-              Start Nu
-            </button>
-            <p className="text-blue-100 text-[10px] font-bold uppercase tracking-widest opacity-60">
-              Geen account nodig • Geen gegevens delen
-            </p>
-          </div>
-
-          {authError && (
-            <div className="bg-red-500/20 border border-red-500/50 text-white p-3 rounded-xl text-xs font-bold">
-              {authError}
-            </div>
-          )}
-
-          <div className="pt-8 border-t border-white/10">
-            <button 
-              onClick={() => setAuthMode(authMode === 'login' ? 'email' : 'login')}
-              className="text-blue-200 text-[10px] font-bold uppercase tracking-widest hover:text-white transition-colors"
-            >
-              {authMode === 'login' ? 'Beheerder Login' : 'Terug naar Start'}
-            </button>
-            
-            {authMode === 'email' && (
-              <form onSubmit={handleAdminLogin} className="mt-4 space-y-3">
-                <input 
-                  type="email" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Admin Email"
-                  className="w-full bg-white/10 border border-white/20 px-4 py-3 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none"
-                  required
-                />
-                <input 
-                  type="password" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Wachtwoord"
-                  className="w-full bg-white/10 border border-white/20 px-4 py-3 rounded-xl text-white placeholder:text-white/40 text-sm focus:outline-none"
-                  required
-                />
-                <button 
-                  type="submit"
-                  className="w-full bg-white text-blue-600 py-3 rounded-xl font-bold text-sm"
-                >
-                  Inloggen als Beheerder
-                </button>
-              </form>
-            )}
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div 
@@ -329,6 +338,13 @@ export default function App() {
           90% { transform: translate(1px, 2px) rotate(0deg); }
           100% { transform: translate(1px, -2px) rotate(-1deg); }
         }
+        @keyframes party-flash {
+          0% { background-color: rgba(255, 0, 0, 0.1); }
+          25% { background-color: rgba(0, 255, 0, 0.1); }
+          50% { background-color: rgba(0, 0, 255, 0.1); }
+          75% { background-color: rgba(255, 255, 0, 0.1); }
+          100% { background-color: rgba(255, 0, 255, 0.1); }
+        }
       `}</style>
       {/* Header */}
       <header className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50">
@@ -344,9 +360,11 @@ export default function App() {
               <Coins size={16} className="text-yellow-400" />
               <span>{userData?.credits || 0}</span>
             </div>
-            <button onClick={handleLogout} className="p-2 hover:bg-blue-500 rounded-full transition-colors">
-              <LogOut size={20} />
-            </button>
+            {user && !user.isAnonymous && (
+              <button onClick={handleLogout} className="p-2 hover:bg-blue-500 rounded-full transition-colors">
+                <LogOut size={20} />
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -361,6 +379,27 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
+              {/* Party Banner */}
+              <AnimatePresence>
+                {trollEffect?.type === 'party' && (
+                  <motion.div 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.8, opacity: 0 }}
+                    className="mb-6"
+                  >
+                    <div className="bg-yellow-400 text-blue-900 p-6 rounded-3xl shadow-xl border-4 border-white flex flex-col items-center gap-2 text-center">
+                      <div className="flex items-center gap-4">
+                        <span className="text-3xl">🎉</span>
+                        <h2 className="text-2xl font-black uppercase italic tracking-tighter">Happy Livegang!</h2>
+                        <span className="text-3xl">🎉</span>
+                      </div>
+                      <p className="text-xs font-bold opacity-70 uppercase tracking-widest">Het feest is begonnen!</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <StepTracker userData={userData} t={t} />
               <FruitMachine userData={userData} supermarkets={supermarkets} t={t} />
             </motion.div>
@@ -407,7 +446,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <AdminPanel userData={userData} t={t} />
+              <AdminPanel userData={userData} t={t} onAdminLogin={handleGoogleLogin} />
             </motion.div>
           )}
         </AnimatePresence>
