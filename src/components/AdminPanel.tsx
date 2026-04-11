@@ -41,19 +41,27 @@ export default function AdminPanel({ userData: currentUser, t, onAdminLogin }: {
   const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'pepijnduivenvoorden@gmail.com';
 
   useEffect(() => {
-    if (isAuthorized) {
+    if (isAuthorized && auth.currentUser) {
       let unsubUsers = () => {};
       if (isAdmin) {
         const qUsers = query(collection(db, 'users'));
         unsubUsers = onSnapshot(qUsers, (snap) => {
           setUsers(snap.docs.map(doc => doc.data() as UserData));
-        }, (e) => handleFirestoreError(e, OperationType.LIST, 'users'));
+        }, (e) => {
+          console.error('Admin users listener failed:', e);
+          if (auth.currentUser && e.code !== 'permission-denied') {
+            handleFirestoreError(e, OperationType.LIST, 'users');
+          }
+        });
       }
 
       const qStores = query(collection(db, 'supermarkets'));
       const unsubStores = onSnapshot(qStores, (snap) => {
         setSupermarkets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supermarket)));
-      }, (e) => handleFirestoreError(e, OperationType.LIST, 'supermarkets'));
+      }, (e) => {
+        console.error('Admin stores listener failed:', e);
+        if (auth.currentUser) handleFirestoreError(e, OperationType.LIST, 'supermarkets');
+      });
 
       const unsubConfig = onSnapshot(doc(db, 'config', 'app'), (snap) => {
         if (snap.exists()) {
@@ -64,19 +72,30 @@ export default function AdminPanel({ userData: currentUser, t, onAdminLogin }: {
             ads: Array.isArray(data.ads) ? data.ads : []
           });
         }
-      }, (e) => handleFirestoreError(e, OperationType.GET, 'config/app'));
+      }, (e) => {
+        console.error('Admin config listener failed:', e);
+        if (auth.currentUser) handleFirestoreError(e, OperationType.GET, 'config/app');
+      });
 
-      const qCoupons = query(collection(db, 'coupons'));
-      const unsubCoupons = onSnapshot(qCoupons, (snap) => {
-        setCoupons(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, (e) => handleFirestoreError(e, OperationType.LIST, 'coupons'));
+      let unsubCoupons = () => {};
+      if (isAdmin) {
+        const qCoupons = query(collection(db, 'coupons'));
+        unsubCoupons = onSnapshot(qCoupons, (snap) => {
+          setCoupons(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (e) => {
+          console.error('Admin coupons listener failed:', e);
+          if (auth.currentUser && e.code !== 'permission-denied') {
+            handleFirestoreError(e, OperationType.LIST, 'coupons');
+          }
+        });
+      }
 
       const unsubTrolls = onSnapshot(doc(db, 'config', 'trolls'), (snap) => {
         if (snap.exists()) {
           const data = snap.data();
           setActiveTroll({ type: data.type, active: data.active });
         }
-      });
+      }, (e) => console.warn('Admin trolls listener failed:', e));
 
       return () => {
         unsubUsers();
@@ -701,6 +720,30 @@ export default function AdminPanel({ userData: currentUser, t, onAdminLogin }: {
                   <span>{Math.round(appConfig.winChance * 100)}%</span>
                   <span>100%</span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-blue-900">Gast Inloggen</p>
+                    <p className="text-[10px] text-blue-400 font-bold uppercase">Toestaan dat gasten spelen</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setAppConfig({...appConfig, allowGuestLogin: !appConfig.allowGuestLogin})}
+                  className={cn(
+                    "w-12 h-6 rounded-full transition-all relative",
+                    appConfig.allowGuestLogin !== false ? "bg-blue-600" : "bg-gray-300"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                    appConfig.allowGuestLogin !== false ? "left-7" : "left-1"
+                  )} />
+                </button>
               </div>
 
               {/* Prizes Management */}

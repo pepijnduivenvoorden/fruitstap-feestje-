@@ -49,7 +49,11 @@ export default function FruitMachine({ userData, supermarkets, t }: { userData: 
           ads: Array.isArray(data.ads) ? data.ads : []
         });
       }
-    }, (e) => handleFirestoreError(e, OperationType.GET, 'config/app'));
+    }, (e) => {
+      if (e.code !== 'permission-denied') {
+        handleFirestoreError(e, OperationType.GET, 'config/app');
+      }
+    });
     return () => unsub();
   }, []);
 

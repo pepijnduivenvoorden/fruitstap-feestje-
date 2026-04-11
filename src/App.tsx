@@ -27,7 +27,8 @@ import {
   LogIn,
   Trophy,
   Coins,
-  Store
+  Store,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -84,6 +85,7 @@ export interface AppConfig {
   winChance: number;
   ads: { text: string, url: string }[];
   prizes: { key: string, emoji: string, name: string, weight: number }[];
+  allowGuestLogin?: boolean;
 }
 
 type Tab = 'steps' | 'scan' | 'coupons' | 'map' | 'admin';
@@ -96,6 +98,7 @@ export default function App() {
   const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);
   const [trollEffect, setTrollEffect] = useState<{ type: string, timestamp: number } | null>(null);
   const [isAtTop, setIsAtTop] = useState(true);
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   
   const partyAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -103,31 +106,43 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        try {
-          await signInAnonymously(auth);
-        } catch (error) {
-          console.error('Anonymous sign-in failed', error);
-          setLoading(false);
-        }
-      } else {
-        setUser(u);
-        setLoading(false);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
+  // Config Listener for Guest Login check
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'app'), (snap) => {
+      if (snap.exists()) {
+        setAppConfig(snap.data() as AppConfig);
+      }
+    }, (e) => {
+      if (e.code !== 'permission-denied') {
+        console.error('Config load failed:', e);
+      }
+    });
+    return () => unsub();
+  }, []);
+
   // User Data Listener
   useEffect(() => {
-    if (!user) return;
+    // Extra defensive check: ensure both state and Firebase SDK agree on auth
+    if (!user || !auth.currentUser || user.uid !== auth.currentUser.uid) {
+      setUserData(null);
+      return;
+    }
 
     const userRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(userRef, (docSnap) => {
       if (docSnap.exists()) {
         setUserData(docSnap.data() as UserData);
       } else {
+        // Double check auth again before writing
+        if (!auth.currentUser) return;
+        
         // Initialize user data
         const newData: UserData = {
           uid: user.uid,
@@ -139,27 +154,52 @@ export default function App() {
           shoeScanned: false,
           language: 'nl',
         };
-        setDoc(userRef, newData).catch(e => handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`));
+        setDoc(userRef, newData).catch(e => {
+          console.error('Initial user data write failed:', e);
+          // Only report if we still think we are logged in
+          if (auth.currentUser) {
+            handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
+          }
+        });
       }
       setLoading(false);
-    }, (e) => handleFirestoreError(e, OperationType.GET, `users/${user.uid}`));
+    }, (e) => {
+      console.error('User data listener failed:', e);
+      // Only report if we still think we are logged in and it's not a transient permission error
+      if (auth.currentUser && e.code !== 'permission-denied') {
+        handleFirestoreError(e, OperationType.GET, `users/${user.uid}`);
+      }
+    });
 
     return () => unsubscribe();
   }, [user]);
 
   // Supermarkets Listener
   useEffect(() => {
+    // Supermarkets are public, but we still wait for auth state to be determined
+    // to avoid unnecessary errors if the rules were stricter.
+    // However, since rules allow public read, we can run this.
+    // But let's guard it with a check to avoid running if we are still "loading" auth.
+    if (loading) return;
+
     const q = query(collection(db, 'supermarkets'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supermarket));
       setSupermarkets(list);
-    }, (e) => handleFirestoreError(e, OperationType.LIST, 'supermarkets'));
+    }, (e) => {
+      // Only log if it's not a permission error during initial load
+      if (e.code !== 'permission-denied') {
+        handleFirestoreError(e, OperationType.LIST, 'supermarkets');
+      }
+    });
 
     return () => unsubscribe();
-  }, []);
+  }, [loading]);
 
   // Global Trolls Listener
   useEffect(() => {
+    if (loading) return;
+
     const unsub = onSnapshot(doc(db, 'config', 'trolls'), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -183,9 +223,13 @@ export default function App() {
           setTrollEffect(null);
         }
       }
-    }, (err) => console.error('Troll listener error:', err));
+    }, (err) => {
+      if (err.code !== 'permission-denied') {
+        console.error('Troll listener error:', err);
+      }
+    });
     return () => unsub();
-  }, []);
+  }, [loading]);
 
   // Periodic confetti for party mode
   useEffect(() => {
@@ -278,10 +322,24 @@ export default function App() {
   const handleGoogleLogin = async () => {
     try {
       setAuthError(null);
+      setLoading(true);
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed', error);
-      setAuthError('Google login failed');
+      setAuthError('Google login failed: ' + error.message);
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      setAuthError(null);
+      setLoading(true);
+      await signInAnonymously(auth);
+    } catch (error: any) {
+      console.error('Guest login failed', error);
+      setAuthError('Gast inloggen mislukt: ' + error.message);
+      setLoading(false);
     }
   };
 
@@ -316,8 +374,55 @@ export default function App() {
     );
   }
 
-  // No more login screen - we use anonymous auth by default
+  // Login Screen if not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-blue-600 flex flex-col items-center justify-center p-6 text-white">
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl text-center space-y-8"
+        >
+          <div className="bg-blue-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto">
+            <Footprints size={48} className="text-blue-600" />
+          </div>
+          
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter">FruitStap</h1>
+            <p className="text-gray-500">Wandel je weg naar gezonde beloningen!</p>
+          </div>
 
+          <div className="space-y-4">
+            <button 
+              onClick={handleGoogleLogin}
+              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase italic shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
+            >
+              <LogIn size={20} />
+              Inloggen met Google
+            </button>
+
+            {(appConfig?.allowGuestLogin !== false) && (
+              <button 
+                onClick={handleGuestLogin}
+                className="w-full bg-gray-100 text-blue-600 py-4 rounded-2xl font-black uppercase italic shadow-md hover:bg-gray-200 transition-all flex items-center justify-center gap-3"
+              >
+                <Users size={20} />
+                Doorgaan als Gast
+              </button>
+            )}
+            
+            {authError && (
+              <p className="text-red-500 text-sm font-bold">{authError}</p>
+            )}
+            
+            <p className="text-xs text-gray-400">
+              Door in te loggen ga je akkoord met onze voorwaarden.
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -416,7 +521,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeTab === 'coupons' && (
+          {activeTab === 'coupons' && user && (
             <motion.div
               key="coupons"
               initial={{ opacity: 0, y: 20 }}
